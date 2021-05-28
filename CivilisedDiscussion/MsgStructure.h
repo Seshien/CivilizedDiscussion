@@ -2,6 +2,8 @@
 enum class Type : int { FRIENDS, ROOMS, M, P, G };
 
 enum class SubType : int { REQ, ACK, INVITE, chM, chP, chG };
+
+
 struct MsgStructure
 {
 	MsgStructure()
