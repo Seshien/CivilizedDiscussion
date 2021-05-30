@@ -11,11 +11,12 @@ struct DebaterRep
 };
 
 //if true, first go before second
-bool compare(DebaterRep a, DebaterRep b)
-{
-	if (a.id == b.id)
-		return false;
-	if (a.clock == b.clock)
-		return a.id < b.id;
-	return a.clock < b.clock;
-}
+struct cmp {
+	bool operator() (DebaterRep a, DebaterRep b) const {
+		if (a.id == b.id)
+			return false;
+		if (a.clock == b.clock)
+			return a.id < b.id;
+		return a.clock < b.clock;
+	}
+};
