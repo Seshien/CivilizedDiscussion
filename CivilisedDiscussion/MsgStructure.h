@@ -8,7 +8,9 @@ struct MsgStructure
 {
 	MsgStructure()
 	{
+
 	}
+
 	MsgStructure(int id, int ts, Type type, SubType subtype)
 	{
 		this->id = id;

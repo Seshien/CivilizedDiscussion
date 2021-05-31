@@ -5,6 +5,7 @@ int main(int argc, char **argv)
 {
 	/* Tworzenie w¹tków, inicjalizacja itp */
 	int provided;
+
 	MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
 	check_thread_support(provided);
 	initStruct();
@@ -15,9 +16,7 @@ int main(int argc, char **argv)
 	srand(rank);
 
 	Debater debater(rank, sizeDebaters, MPI_structure);
-	std::cout << "Debater created" << std::endl;
 	debater.run();
-	std::cout << "Debater finished" << std::endl;
 	finish();
 	return 0;
 }
