@@ -4,6 +4,9 @@
 int main(int argc, char **argv)
 {
 	/* Tworzenie w¹tków, inicjalizacja itp */
+#ifdef _WIN32
+	addColours();
+#endif
 	int provided;
 
 	MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
