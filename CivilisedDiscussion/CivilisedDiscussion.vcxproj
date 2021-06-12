@@ -138,8 +138,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Debater.cpp" />
+    <ClCompile Include="DebaterRep.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MsgStructure.cpp" />
+    <ClCompile Include="Utility.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Debater.h" />
