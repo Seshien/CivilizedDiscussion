@@ -332,13 +332,14 @@ void Debater::broadcastMessage(Type type, SubType subtype)
 
 	{
 		std::lock_guard<std::mutex> lk(mutexCl);
+		this->clock++;
 		for (auto & debater : otherDebaters)
 		{
 			if (debater.id == this->id)
 				continue;
 			_sendMessage(debater.id, &msg);
 		}
-		this->clock++;
+
 	}
 
 }
@@ -349,8 +350,9 @@ void Debater::sendMessage(int destination, Type type, SubType subtype)
 	print(string_format("Sending message - %d %d %s %s", destination, msg.ts, getType(msg.type), getSubType(msg.subtype)));
 	{
 		std::lock_guard<std::mutex> lk(mutexCl);
-		_sendMessage(destination, &msg);
 		this->clock++;
+		_sendMessage(destination, &msg);
+
 	}
 }
 
