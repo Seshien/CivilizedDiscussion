@@ -62,6 +62,18 @@ private:
 
 	void communicate();
 
+	void searchForPartner();
+
+	void searchRoom();
+
+	void waitForRoom();
+
+	void searchItem();
+
+	void waitForRD();
+
+	bool getResult();
+
 	void broadcastMessage(Type type, SubType subtype);
 
 	void sendMessage(int destination, Type type, SubType subtype);
@@ -80,7 +92,7 @@ private:
 
 	void wait(int time);
 
-	void print(const std::string & str, bool important = false);
+	void printColour(const std::string & str, bool important = false);
 
 	std::string getType(int id);
 
