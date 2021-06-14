@@ -21,6 +21,26 @@ Debater::Debater(int id, int sizeDebaters, MPI_Datatype msgStruct)
 	}
 }
 
+void Debater::interpretArgs(int argc, char **argv)
+{
+	int r, m, p, g;
+
+	for (int i = 0; i < argc; i++)
+	{
+		if (argv[i][1] == '\0')
+		{
+			if (argv[i][0] == 'r')
+				roomsAmount = atoi(argv[i+1]);
+			if (argv[i][0] == 'm')
+				itemAmount[0]= atoi(argv[i + 1]);
+			if (argv[i][0] == 'p')
+				itemAmount[1] = atoi(argv[i + 1]);
+			if (argv[i][0] == 'g')
+				itemAmount[2] = atoi(argv[i + 1]);
+		}
+	}
+}
+
 void Debater::run()
 {
 	printColour("Start Running", true);
@@ -59,16 +79,18 @@ void Debater::run()
 		
 		bool winner = getResult();
 
+		int prevChoice = this->choice;
 		//wyslij wiadomosci ACK[S] i ACK[M/P/G]
 		{
 			std::lock_guard<std::mutex> lk(mutexCh);
 			partnerChoice = -1;
+			this->choice = -1;
 			itemTaken = Status::FREE;
 		}
 
 		//uwalnianie przedmiotu
 		//mapowanie item choice to item type
-		broadcastMessage((Type)(this->choice + 2), SubType::ACK);
+		broadcastMessage((Type)(prevChoice + 2), SubType::ACK);
 
 
 		//uwalnianie pokoju
@@ -194,7 +216,7 @@ void Debater::communicate()
 				safeAdd(sender, queue);
 
 				//Jezeli wiadomosc jest requestem a my nie czekamy i nie posiadamy itemu
-				if ((SubType)packet.subtype == SubType::REQ && this->itemTaken == Status::FREE)
+				if ((SubType)packet.subtype == SubType::REQ && (this->itemTaken == Status::FREE || this->choice != itemNumber))
 					sendMessage(sender.id, (Type)packet.type, SubType::ACK);
 
 				//jezeli czekamy za itemem

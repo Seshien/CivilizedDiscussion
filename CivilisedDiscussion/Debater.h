@@ -55,7 +55,7 @@ private:
 	std::mutex mutexF, mutexR, mutexCh, mutexPrint, mutexCl;
 
 public:
-
+	void interpretArgs(int argc, char** argv);
 	void run();
 
 private:
