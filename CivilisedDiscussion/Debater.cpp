@@ -23,8 +23,6 @@ Debater::Debater(int id, int sizeDebaters, MPI_Datatype msgStruct)
 
 void Debater::interpretArgs(int argc, char **argv)
 {
-	int r, m, p, g;
-
 	for (int i = 0; i < argc; i++)
 	{
 		if (argv[i][1] == '\0')
