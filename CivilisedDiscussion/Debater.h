@@ -15,7 +15,7 @@
 #include "MsgStructure.h"
 #include "DebaterRep.h"
 
-
+//defaultowe wartosci, ale mozna je zmienic
 #define RSIZE 3
 #define MSIZE 6
 #define PSIZE 6
@@ -66,7 +66,7 @@ private:
 
 	void searchRoom();
 
-	void waitForRoom();
+	void waitForPartner();
 
 	void searchItem();
 

@@ -19,19 +19,20 @@ Debater::Debater(int id, int sizeDebaters, MPI_Datatype msgStruct)
 			safeAdd(debRep, iQ);
 		safeAdd(debRep, otherDebaters);
 	}
-
 }
 
 void Debater::run()
 {
 	printColour("Start Running", true);
 	std::thread t(&Debater::communicate, this);
+	//ten detach
 	t.detach();
 
 	while (1)
 	{
 		//wait
 		wait(randomTime(WAITMIN, WAITMAX));
+
 		searchForPartner();
 
 		//Zaleznie od pozycji w Friends:
@@ -39,22 +40,14 @@ void Debater::run()
 		//broadcast REQ[R], sprawdz swoja pozycje w kolejce Rqueue, jezeli sie nie dostajesz to czekaj za watkiem komunikacyjnym
 		//nieparzysta
 		if (this->position % 2 == 1)
-		{
 			searchRoom();
-		}
-
-		//czekaj za watkiem komunikacyjnym,
-		//parzysta
 		else
-		{
-			waitForRoom();
-		}
+			waitForPartner();
 
 
 		searchItem();
 
-
-
+		waitForRD();
 
 		printColour("Starts discussion with " + std::to_string(this->partner), true);
 
@@ -73,23 +66,25 @@ void Debater::run()
 			itemTaken = Status::FREE;
 		}
 
+		//uwalnianie przedmiotu
+		//mapowanie item choice to item type
 		broadcastMessage((Type)(this->choice + 2), SubType::ACK);
 
 
+		//uwalnianie pokoju
 		if (roomTaken == Status::TAKEN)
 			broadcastMessage(Type::ROOMS, SubType::ACK);
 
+		//Zerowanie zmiennych
 		{
 			std::lock_guard<std::mutex> lk(mutexR);
 			roomTaken = Status::FREE;
 			inviteTaken = Status::FREE;
 		}
-
 		{
 			std::lock_guard<std::mutex> lk(mutexF);
 			friendTaken = Status::FREE;
 		}
-
 
 		//jezeli wygrales, czekaj dodatkowy czas
 		if (winner)
@@ -113,10 +108,14 @@ void Debater::communicate()
 		DebaterRep sender(packet.id, packet.ts);
 		{
 			std::lock_guard<std::mutex> lk(mutexCl);
+			//max
 			int temp = this->clock;
 			if (packet.ts > this->clock)
 				temp = packet.ts;
+			//max + 1
 			this->clock = temp + 1;
+
+			// lista wszystkich debaterow
 			safeAdd(sender, otherDebaters);
 		}
 
@@ -128,68 +127,82 @@ void Debater::communicate()
 			switch ((SubType)packet.subtype)
 			{
 			case SubType::REQ:
-			{
-				std::lock_guard<std::mutex> lk(mutexF);
-				safeAdd(sender, this->friendsQ, true);
-			}
-			sendMessage(packet.id, Type::FRIENDS, SubType::ACK);
-			break;
+				{
+					std::lock_guard<std::mutex> lk(mutexF);
+					safeAdd(sender, this->friendsQ, true);
+				}
+				sendMessage(packet.id, Type::FRIENDS, SubType::ACK);
+				break;
 
 			case SubType::ACK:
-			{
-				std::lock_guard<std::mutex> lk(mutexF);
-				ackFriendCounter++;
-				if (ackFriendCounter >= sizeDebaters - 1)
 				{
-					friendTaken = Status::TAKEN;
+					std::lock_guard<std::mutex> lk(mutexF);
+					ackFriendCounter++;
+					if (ackFriendCounter >= sizeDebaters - 1)
+						friendTaken = Status::TAKEN;
 				}
-			}
-			checkpointF.notify_all();
-			break;
+				checkpointF.notify_all();
+				break;
+
+			//Wiadomosci dotycz¹ce partnera
 
 			case SubType::INVITE:
-			{
-				std::lock_guard<std::mutex> lk(mutexR);
-				this->partner = packet.id;
-				this->inviteTaken = Status::TAKEN;
-			}
-			checkpointR.notify_all();
-			break;
+				{
+					std::lock_guard<std::mutex> lk(mutexR);
+					this->partner = packet.id;
+					this->inviteTaken = Status::TAKEN;
+				}
+				checkpointR.notify_all();
+				break;
+
+			//RD
 			default:
-			{
-				std::lock_guard<std::mutex> lk(mutexCh);
-				partnerChoice = packet.subtype - 3;
-			}
-			checkpointCh.notify_all();
-			break;
+				{
+					std::lock_guard<std::mutex> lk(mutexCh);
+					// maps subtype to items choice (queue)
+					partnerChoice = packet.subtype - 3;
+				}
+				checkpointCh.notify_all();
+				break;
 			}
 			break;
 
 			//ROOMS
 		case Type::ROOMS:
-		{
-			std::lock_guard<std::mutex> lk(mutexR);
-			safeAdd(sender, this->roomsQ);
-			if ((SubType)packet.subtype == SubType::REQ && roomTaken == Status::FREE)
-				sendMessage(sender.id, Type::ROOMS, SubType::ACK);
-			if (this->roomTaken == Status::WAITING && findPosition(roomsQ) < roomsAmount)
-				roomTaken = Status::TAKEN;
-		}
-		checkpointR.notify_one();
-		break;
-		//M, P, G
+			{
+				std::lock_guard<std::mutex> lk(mutexR);
+				safeAdd(sender, this->roomsQ);
+
+				//Jezeli wiadomosc jest requestem a my nie czekamy i nie jestesmy w pokoju
+				if ((SubType)packet.subtype == SubType::REQ && roomTaken == Status::FREE)
+					sendMessage(sender.id, Type::ROOMS, SubType::ACK);
+
+				//jezeli czekamy za itemem
+				if (this->roomTaken == Status::WAITING && findPosition(roomsQ) < roomsAmount)
+					roomTaken = Status::TAKEN;
+			}
+			checkpointR.notify_one();
+			break;
+
+		//ktorykolwiek z itemow: M, P, G
 		default:
-		{
-			std::lock_guard<std::mutex> lk(mutexCh);
-			std::list<DebaterRep> * queue = &this->itemQ[packet.type - 2];
-			safeAdd(sender, *queue);
-			if ((SubType)packet.subtype == SubType::REQ && this->itemTaken == Status::FREE)
-				sendMessage(sender.id, (Type)packet.type, SubType::ACK);
-			if (this->itemTaken == Status::WAITING && findPosition(*queue) < itemAmount[this->choice])
-				itemTaken = Status::TAKEN;
-		}
-		checkpointCh.notify_one();
-		break;
+			{
+				std::lock_guard<std::mutex> lk(mutexCh);
+				//mapowanie z type do item choice (queue)
+				int itemNumber = packet.type - 2;
+				std::list<DebaterRep> & queue = this->itemQ[itemNumber];
+				safeAdd(sender, queue);
+
+				//Jezeli wiadomosc jest requestem a my nie czekamy i nie posiadamy itemu
+				if ((SubType)packet.subtype == SubType::REQ && this->itemTaken == Status::FREE)
+					sendMessage(sender.id, (Type)packet.type, SubType::ACK);
+
+				//jezeli czekamy za itemem
+				if (itemNumber == this->choice && this->itemTaken == Status::WAITING && findPosition(queue) < itemAmount[this->choice])
+					itemTaken = Status::TAKEN;
+			}
+			checkpointCh.notify_one();
+			break;
 		}
 	}
 }
@@ -208,7 +221,7 @@ void Debater::searchForPartner()
 
 	printColour("Added himself to friends");
 	printColour("Before Friends size " + std::to_string(friendsQ.size()));
-	//Wyslij jakos REQ[F]
+	//Wyslij REQ[F]
 
 	broadcastMessage(Type::FRIENDS, SubType::REQ);
 	printColour("Sent friend messages");
@@ -236,8 +249,9 @@ void Debater::searchRoom()
 	{
 		std::lock_guard<std::mutex> lk(mutexF);
 		//Usun wszystkie wpisy w Friendsach wyzsze od siebie i siebie
-		//zwraca id poprzedniego i twoja pozycje 
+		//zwraca id poprzedniego czyli partnera
 		this->partner = deleteUntil(friendsQ);
+
 		printColour("Send invite to his partner " + std::to_string(this->partner), true);
 		sendMessage(partner, Type::FRIENDS, SubType::INVITE);
 	}
@@ -273,7 +287,7 @@ void Debater::searchRoom()
 	}
 }
 
-void Debater::waitForRoom()
+void Debater::waitForPartner()
 {
 	printColour("Waits for invite from partner", true);
 	if (this->inviteTaken != Status::TAKEN)
@@ -282,11 +296,12 @@ void Debater::waitForRoom()
 		checkpointR.wait(lk, [this] {return this->inviteTaken == Status::TAKEN; });
 	}
 
-	//w watku komunikacyjnym partnera ustawic, usuwamy tez do partnera
+	//w watku komunikacyjnym ustawic partnera, usuwamy tez do partnera
 
 	{
 		std::lock_guard<std::mutex> lk(mutexF);
 		printColour("Gets invite from his partner " + std::to_string(this->partner), true);
+		//true znaczy ze usuwasz do swojej pozycji+1, czyli tez swojego partnera
 		int temp = deleteUntil(friendsQ, true);
 		printColour("Deleted from friends queue to id " + std::to_string(temp));
 	}
@@ -295,20 +310,22 @@ void Debater::waitForRoom()
 void Debater::searchItem()
 {
 	//losuj jeden z trzech wyborów
-//broadcast REQ[M/P/G], sprawdz swoj¹ pozycje w kolejce, jezeli sie nie dostajesz to czekaj za w¹tkiem komunikacyjnym
-	int pos = -1;
+	//broadcast REQ[M/P/G], sprawdz swoj¹ pozycje w kolejce, jezeli sie nie dostajesz to czekaj za w¹tkiem komunikacyjnym
+	int pos;
 	{
 		std::lock_guard<std::mutex> lk(mutexCh);
 		this->choice = rand() % 3;
 		safeAdd(DebaterRep(this->id, this->clock), this->itemQ[choice]);
 		pos = findPosition(this->itemQ[choice]);
 		this->itemTaken = Status::WAITING;
+		//mapowanie item choice do message type
 		broadcastMessage((Type)(choice + 2), SubType::REQ);
 	}
 
 	//wchodzisz
 	if (pos < itemAmount[this->choice])
 	{
+		//mapowanie item choice do message subtype
 		printColour("Gets item instantly " + getSubType(choice + 3), true);
 		std::lock_guard<std::mutex> lk(mutexCh);
 		this->itemTaken = Status::TAKEN;
@@ -316,9 +333,11 @@ void Debater::searchItem()
 	//nie wchodzisz i czekasz
 	else
 	{
+		//mapowanie item choice do message type
 		printColour("Waits for item " + getSubType(choice + 3), true);
 		std::unique_lock<std::mutex> lk(mutexCh);
 		checkpointCh.wait(lk, [this] {return this->itemTaken == Status::TAKEN; });
+		//mapowanie item choice do message type
 		printColour("Gets item " + getSubType(choice + 3), true);
 	}
 }
@@ -326,6 +345,7 @@ void Debater::searchItem()
 void Debater::waitForRD()
 {
 	//wyslij RD, sprawdz czy dostales RD od partnera
+	//mapowanie choice do message subtype
 	sendMessage(partner, Type::FRIENDS, (SubType)(choice + 3));
 	if (partnerChoice == -1)
 	{
@@ -342,29 +362,28 @@ bool Debater::getResult()
 	//czekaj, porownaj swoje RD i RD partnera
 	// G >> P >> M >> G
 	// 2 >> 1 >> 0 >> 2
+	//Dla jakich kombinacji wygrywasz
 	// 2 1
 	// 1 0
 	// 0 2
-
+	//Dla jakich kombinacji przegrywasz
 	// 1 2
 	// 0 1
 	// 2 0
 	// W debacie slipki pokonuj¹ pinezki, pinezki pokonuj¹ miski, miski pokonuj¹ slipki. Po
-	if (choice - partnerChoice == 1 || choice - partnerChoice == -2)
-		return true;
-	else
-		return false;
+	int result = choice - partnerChoice;
+	return (result == 1 || result == -2);
 
 }
 
 void Debater::broadcastMessage(Type type, SubType subtype)
 {
-	MsgStructure msg(this->id, this->clock, type, subtype);
-	printColour(string_format("Broadcasting message - %d %s %s ", msg.ts, getType(msg.type), getSubType(msg.subtype)));
-
 	{
 		std::lock_guard<std::mutex> lk(mutexCl);
-		this->clock++;
+		MsgStructure msg(this->id, this->clock++, type, subtype);
+
+		printColour(string_format("Broadcasting message - %d %s %s ", msg.ts, getType(msg.type), getSubType(msg.subtype)));
+
 		for (auto & debater : otherDebaters)
 		{
 			if (debater.id == this->id)
@@ -378,11 +397,11 @@ void Debater::broadcastMessage(Type type, SubType subtype)
 
 void Debater::sendMessage(int destination, Type type, SubType subtype)
 {
-	MsgStructure msg(this->id, this->clock, type, subtype);
-	printColour(string_format("Sending message - %d %d %s %s", destination, msg.ts, getType(msg.type), getSubType(msg.subtype)));
 	{
 		std::lock_guard<std::mutex> lk(mutexCl);
-		this->clock++;
+		MsgStructure msg(this->id, this->clock++, type, subtype);
+		printColour(string_format("Sending message - %d %d %s %s", destination, msg.ts, getType(msg.type), getSubType(msg.subtype)));
+		//this->clock++;
 		_sendMessage(destination, &msg);
 
 	}
@@ -425,22 +444,19 @@ void Debater::safeAdd(const DebaterRep & rep, std::list<DebaterRep>& list, bool 
 	}
 }
 
-//zwraca beforeid
-
+//zwraca beforeid, jezeli partner to usuwamy tez partnera (czyli + 1 od twojej pozycji)
 int Debater::deleteUntil(std::list<DebaterRep>& list, bool partner)
 {
 	int beforeId = -1;
-	int toId = this->id;
 
 	if (list.empty())
 		return -1;
-
 	else
 	{
 		auto it = list.begin();
 		while (1)
 		{
-			if (it->id == toId)
+			if (it->id == this->id)
 			{
 				//wyrzucamy tez partnera
 				if (partner)
