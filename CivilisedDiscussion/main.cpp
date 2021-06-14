@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 	srand(rank);
 
 	Debater debater(rank, sizeDebaters, MPI_structure);
-	
+	debater.interpretArgs(argc, argv);
 	//-rAmount 5 -mAmount 5 
 	debater.run();
 	
